@@ -39,4 +39,4 @@ bin/
 
 # config
 configs/*
-app/wechatbot/configs/*
+app/wechatbot/configs/*.yaml
