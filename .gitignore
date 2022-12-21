@@ -38,5 +38,5 @@ bin/
 *.swp
 
 # config
-configs/*
+configs/*.yaml
 app/wechatbot/configs/*.yaml
