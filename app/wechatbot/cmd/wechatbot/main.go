@@ -1,11 +1,14 @@
 package main
 
 import (
+	"errors"
 	"flag"
 	"github.com/eatmoreapple/openwechat"
+	"golang.org/x/sync/errgroup"
 	"os"
 	"starlights/app/wechatbot/internal/conf"
 	"starlights/app/wechatbot/internal/service"
+	"time"
 
 	"github.com/go-kratos/kratos/v2"
 	"github.com/go-kratos/kratos/v2/config"
@@ -34,14 +37,14 @@ func init() {
 	flag.StringVar(&flagconf, "conf", "../../configs", "config path, eg: -conf config.yaml")
 }
 
-// 服务列表
-type serviceApp struct {
+// ServiceApp 服务列表
+type ServiceApp struct {
 	app *kratos.App
-	bot *openwechat.Bot
+	Bot *openwechat.Bot
 }
 
-func newApp(logger log.Logger, gs *grpc.Server, hs *http.Server, bot *openwechat.Bot) serviceApp {
-	return serviceApp{
+func newApp(logger log.Logger, gs *grpc.Server, hs *http.Server, bot *openwechat.Bot) ServiceApp {
+	return ServiceApp{
 		app: kratos.New(
 			kratos.ID(id),
 			kratos.Name(Name),
@@ -53,7 +56,7 @@ func newApp(logger log.Logger, gs *grpc.Server, hs *http.Server, bot *openwechat
 				hs,
 			),
 		),
-		bot: bot,
+		Bot: bot,
 	}
 }
 
@@ -73,6 +76,7 @@ func main() {
 			file.NewSource(flagconf),
 		),
 	)
+
 	defer c.Close()
 
 	if err := c.Load(); err != nil {
@@ -84,14 +88,36 @@ func main() {
 		panic(err)
 	}
 
-	serviceApp, cleanup, err := wireApp(bc.Server, bc.Data, bc.Bot, logger, service.BotRegister())
+	mService, cleanup, err := wireApp(bc.Server, bc.Data, bc.Bot, logger, service.BotRegister())
 	if err != nil {
 		panic(err)
 	}
 	defer cleanup()
-	serviceApp.bot.Login()
-	// start and wait for stop signal
-	if err := serviceApp.app.Run(); err != nil {
+	g := errgroup.Group{}
+	g.Go(func() error {
+		storage := openwechat.NewJsonFileHotReloadStorage("storage.json")
+		t := time.NewTicker(2 * time.Second)
+		defer t.Stop()
+		for {
+			select {
+			case <-t.C:
+				if err := mService.Bot.HotLogin(storage, true); err != nil {
+					if !errors.Is(err, openwechat.ErrLoginTimeout) {
+						return err
+					}
+				} else {
+					t.Stop()
+					break
+				}
+			}
+		}
+		return mService.Bot.Block()
+	})
+	g.Go(func() error {
+		// start and wait for stop signal
+		return mService.app.Run()
+	})
+	if err := g.Wait(); err != nil {
 		panic(err)
 	}
 }

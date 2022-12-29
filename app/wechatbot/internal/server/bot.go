@@ -12,7 +12,7 @@ func NewBotServer(c *conf.Bot, logger log.Logger, register []interface{}) *openw
 	case 0:
 		bot = openwechat.DefaultBot(openwechat.Normal)
 	case 1:
-		bot = openwechat.DefaultBot(openwechat.Normal)
+		bot = openwechat.DefaultBot(openwechat.Desktop)
 	}
 	for _, o := range register {
 		if v, ok := o.(openwechat.MessageHandler); ok {
